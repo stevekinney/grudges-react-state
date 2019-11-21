@@ -7,6 +7,110 @@ There are two issues that we'd like to solve for.
 - **Prop drilling**: `Grudges` needs to receive `toggleForgiveness` even though it will never use it. It's just passing it down to `Grudge`.
 - **Needless re-renders**: Everything re-renders even when we just check a single checkbox. We could try to get clever with some of React's performance helpers—or we can just manage our state better.
 
+## Introducting the Application
+
+- Turn on the "Highlight updates when components render." feature in the React developer tools.
+- Notice how a checking a checkbox re-renderers everything.
+- Notice how this is not the case in `NewGrudge`.
+
+## Using a Reducer
+
+We could try to get clever here with `useCallback` and `React.memo`, but since we're always replacing the array of grudges, this is never really going to work out.
+
+What if we took a different approach to managing state?
+
+Let's make a new file called `reducer.js`.
+
+```js
+const reducer = (state = [], action) => {
+  return state;
+};
+```
+
+And then we swap out that `useState` with a `useReducer`.
+
+```js
+const [grudges, dispatch] = useReducer(reducer, initialState);
+```
+
+We're going to create an action type and an action creator.
+
+```js
+const GRUDGE_ADD = 'GRUDGE_ADD';
+const GRUDGE_FORGIVE = 'GRUDGE_FORGIVE';
+```
+
+```js
+const addGrudge = ({ person, reason }) => {
+  dispatch({
+    type: GRUDGE_ADD,
+    payload: {
+      person,
+      reason
+    }
+  });
+};
+```
+
+We'll add it to the reducer.
+
+```js
+const reducer = (state = [], action) => {
+  if (action.type === GRUDGE_ADD) {
+    return [
+      {
+        id: id(),
+        ...action.payload
+      },
+      ...state
+    ];
+  }
+  return state;
+};
+```
+
+### Forgiveness
+
+Let's make an action creator
+
+```js
+const forgiveGrudge = id => {
+  dispatch({
+    type: GRUDGE_FORGIVE,
+    payload: {
+      id
+    }
+  });
+};
+```
+
+We'll also update the reducer here.
+
+```js
+if (action.type === GRUDGE_FORGIVE) {
+  return state.map(grudge => {
+    if (grudge.id === action.payload.id) {
+      return { ...grudge, forgiven: !grudge.forgiven };
+    }
+    return grudge;
+  });
+}
+```
+
+We'll thread through `forgiveGrudge` as `onForgive`.
+
+```js
+<button onClick={() => onForgive(grudge.id)}>Forgive</button>
+```
+
+That prop drilling isn't great, but we'll deal with it in a bit.
+
+## Memoization
+
+- Wrap the action creators in `useCallback`
+- Wrap `NewGrudge` and `Grudge` in `React.memo`
+- Notice how we can reduce re-renders
+
 ## The Context API
 
 The above example wasn't _too_ bad. But, you can see how it might get a bit out of hand as our application grows.
@@ -18,30 +122,65 @@ Modern builds of React allow you to use something called the Context API to make
 We're going to rip a lot out of `Application.js` and move it to a new file called `GrudgeContext.js` and it's going to look something like this.
 
 ```js
-import React, { createContext, useState } from 'react';
-import name from 'random-name';
+import React, { useReducer, createContext, useCallback } from 'react';
+import initialState from './initialState';
 import id from 'uuid/v4';
 
-export const GrudgeContext = createContext([]);
+export const GrudgeContext = createContext();
+
+const GRUDGE_ADD = 'GRUDGE_ADD';
+const GRUDGE_FORGIVE = 'GRUDGE_FORGIVE';
+
+const reducer = (state = [], action) => {
+  if (action.type === GRUDGE_ADD) {
+    return [
+      {
+        id: id(),
+        ...action.payload
+      },
+      ...state
+    ];
+  }
+
+  if (action.type === GRUDGE_FORGIVE) {
+    return state.map(grudge => {
+      if (grudge.id === action.payload.id) {
+        return { ...grudge, forgiven: !grudge.forgiven };
+      }
+      return grudge;
+    });
+  }
+
+  return state;
+};
 
 export const GrudgeProvider = ({ children }) => {
-  const [grudges, setGrudges] = React.useState(defaultGrudges);
+  const [grudges, dispatch] = useReducer(reducer, initialState);
 
-  const addGrudge = grudge => {
-    grudge.id = id();
-    setGrudges([grudge, ...grudges]);
-  };
-
-  const toggleForgiveness = id => {
-    setGrudges(
-      grudges.map(grudge => {
-        if (grudge.id === id) {
-          return { ...grudge, forgiven: !grudge.forgiven };
+  const addGrudge = useCallback(
+    ({ person, reason }) => {
+      dispatch({
+        type: GRUDGE_ADD,
+        payload: {
+          person,
+          reason
         }
-        return grudge;
-      })
-    );
-  };
+      });
+    },
+    [dispatch]
+  );
+
+  const toggleForgiveness = useCallback(
+    id => {
+      dispatch({
+        type: GRUDGE_FORGIVE,
+        payload: {
+          id
+        }
+      });
+    },
+    [dispatch]
+  );
 
   return (
     <GrudgeContext.Provider value={{ grudges, addGrudge, toggleForgiveness }}>
@@ -49,75 +188,6 @@ export const GrudgeProvider = ({ children }) => {
     </GrudgeContext.Provider>
   );
 };
-
-const defaultGrudges = [
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Parked too close to me in the parking lot',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Did not brew another pot of coffee after drinking the last cup',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Failed to wish me a happy birthday but ate my cake',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Generally obnoxious and unrepentant about that fact',
-    forgiven: true
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Cut me in line at Safeway and then made eye contact',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Ate the last slice of pizza and left the box out',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Brought "paper products" to a potluck',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Talked over me when I was telling a story',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Changed my playlist as soon as I left the room for 30 seconds',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Spoiled the plot line for Avengers: Endgame',
-    forgiven: false
-  },
-  {
-    id: id(),
-    person: name.first(),
-    reason: 'Ate all of the vegan ham leftovers despite being labelled',
-    forgiven: false
-  }
-];
 ```
 
 Now, `Application.js` looks a lot more slimmed down.
@@ -150,6 +220,8 @@ ReactDOM.render(
   rootElement
 );
 ```
+
+That works and it's cool, but it's still missing the point.
 
 ### Hooking Up the Context API
 
@@ -253,104 +325,24 @@ const NewGrudge = () => {
 export default NewGrudge;
 ```
 
-## Using a Reducer
-
-We could try to get clever here with `useCallback` and `React.memo`, but since we're always replacing the array of grudges, this is never really going to work out.
-
-What if we took a different approach to managing state?
+## Implementing Undo/Redo
 
 ```js
-const reducer = (state = [], action) => {
-  return state;
-};
+{
+  past: [allPastStates],
+  present: currentStateOfTheWorld,
+  future: [anyAndAllFutureStates]
+}
 ```
 
-And then we swap out that `useState` with a `useReducer`.
+### Some Tasting Notes
 
-```js
-const [grudges, dispatch] = useReducer(reducer, []);
-```
+- We lost all of our performance optimizations.
+- It's a trade off.
+- Grudge List might seem like a toy application, but it could also represent a smaller part of a larger system.
+- Could you use the Context API to get things all of the way down to this level and then use the approach we had previous?
 
-We're going to create an action type and an action creator.
-
-```js
-const ADD_GRUDGE = 'ADD_GRUDGE';
-const FORGIVE_GRUDGE = 'FORGIVE_GRUDGE';
-```
-
-```js
-const addGrudge = useCallback(
-  ({ person, reason }) => {
-    dispatch({
-      type: ADD_GRUDGE,
-      payload: {
-        person,
-        reason
-      }
-    });
-  },
-  [dispatch]
-);
-```
-
-We'll add it to the reducer.
-
-```js
-const reducer = (state = [], action) => {
-  if (action.type === ADD_GRUDGE) {
-    return [
-      {
-        id: uniqueId(),
-        ...action.payload
-      },
-      ...state
-    ];
-  }
-  return state;
-};
-```
-
-### Forgiveness
-
-Let's make an action creator
-
-```js
-const forgiveGrudge = useCallback(
-  id => {
-    dispatch({
-      type: FORGIVE_GRUDGE,
-      payload: {
-        id
-      }
-    });
-  },
-  [dispatch]
-);
-```
-
-We'll also update the reducer here.
-
-```js
- if (action.type === FORGIVE_GRUDGE) {
-    return state.map(grudge => {
-      if (grudge.id === action.payload.id) {
-        return { ...grudge, forgiven: !grudge.forgiven };
-      }
-      return grudge;
-    });
-  }
-```
-
-We'll thread through `forgiveGrudge` as `onForgive`.
-
-```js
-<button onClick={() => onForgive(grudge.id)}>Forgive</button>
-```
-
-That prop drilling isn't great, but we'll deal with it in a bit.
-
-
-## A Better Way to Manage State
+## Alternative Data Structures
 
 Okay, so that array stuff is a bit wonky.
 
@@ -405,4 +397,3 @@ export const GrudgeProvider = ({ children }) => {
   );
 };
 ```
-
