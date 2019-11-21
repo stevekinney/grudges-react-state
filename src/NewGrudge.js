@@ -4,6 +4,8 @@ const NewGrudge = ({ onSubmit }) => {
   const [person, setPerson] = useState('');
   const [reason, setReason] = useState('');
 
+  console.log('Rendering New Grudge');
+
   const handleChange = event => {
     event.preventDefault();
     onSubmit({ person, reason });
