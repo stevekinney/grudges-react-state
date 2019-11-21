@@ -397,3 +397,129 @@ export const GrudgeProvider = ({ children }) => {
   );
 };
 ```
+
+## Implementing Undo and Redo
+
+We need to think about the past, present, and future.
+
+```js
+const defaultState = {
+  past: [],
+  present: [],
+  future: []
+};
+```
+
+We've broken almost everything. So, let's make this a bit better.
+
+```js
+const reducer = (state, action) => {
+  if (action.type === ADD_GRUDGE) {
+    return {
+      past: [],
+      present: [
+        {
+          id: uniqueId(),
+          ...action.payload
+        },
+        ...state.present
+      ],
+      future: []
+    };
+  }
+
+  if (action.type === FORGIVE_GRUDGE) {
+    return {
+      past: [],
+      present: state.present.filter(grudge => grudge.id !== action.payload.id),
+      future: []
+    };
+  }
+
+  return state;
+};
+```
+
+### Adding to the Stack
+
+```js
+past: [state.present, ...state.past]
+```
+
+```js
+if (action.type === UNDO) {
+  const [newPresent, ...newPast] = state.past;
+  return {
+    past: newPast,
+    present: newPresent,
+    future: [state.present, ...state.present]
+  };
+}
+```
+
+```js
+const undo = useCallback(() => {
+  dispatch({ type: UNDO });
+}, [dispatch]);
+```
+
+```js
+<button disabled={!state.past.length} onClick={undo}>
+  Undo
+</button>
+```
+
+### Getting Redo
+
+```js
+if (action.type === REDO) {
+  const [newPresent, ...newFuture] = state.future;
+  return {
+    past: [state.present, ...state.past],
+    present: newPresent,
+    future: newFuture
+  };
+}
+```
+
+## Abstracting All of This
+
+```js
+const useUndoReducer = (reducer, initialState) => {
+  const undoState = {
+    past: [],
+    present: initialState,
+    future: []
+  };
+
+  const undoReducer = (state, action) => {
+    const newPresent = reducer(state, action);
+
+    if (action.type === UNDO) {
+      const [newPresent, ...newPast] = state.past;
+      return {
+        past: newPast,
+        present: newPresent,
+        future: [state.present, ...state.future]
+      };
+    }
+
+    if (action.type === REDO) {
+      const [newPresent, ...newFuture] = state.future;
+      return {
+        past: [state.present, ...state.past],
+        present: newPresent,
+        future: newFuture
+      };
+    }
+
+    return {
+      past: [state.present, ...state.past],
+      present: newPresent,
+      future: []
+    };
+  };
+
+  return useReducer(undoReducer, undoState);
+};
+```
