@@ -12,6 +12,7 @@ const Application = () => {
 
   const addGrudge = grudge => {
     grudge.id = id();
+    grudge.forgiven = false;
     setGrudges([grudge, ...grudges]);
   };
 
