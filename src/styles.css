@@ -28,6 +28,11 @@ input[type='submit'] {
   transition: all 0.2s;
 }
 
+button:disabled {
+  background-color: white;
+  color: #f32e5b;
+}
+
 button:hover,
 .button:hover,
 input[type='submit']:hover {
